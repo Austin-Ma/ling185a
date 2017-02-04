@@ -102,6 +102,7 @@ recognize :: [GrammarRule] -> State -> [String] -> Bool
 recognize g s ws = any (\s -> elem s (enders g)) (takeSteps g s ws)
 
 -- BEGIN functions for `generate`
+
 predecessors :: [GrammarRule] -> State -> [(State, String)]
 predecessors [] s = []
 predecessors (r:rest) s =
@@ -123,6 +124,7 @@ generate g n =
     case n of 
     Z -> []
     S n' -> concat (map (\r -> extend g n' (Last r)) (enders g))
+    
 -- END functions for `generate`
 
 parse :: [GrammarRule] -> State -> [String] -> [StrucDesc]
