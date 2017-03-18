@@ -146,6 +146,14 @@ fillCellInside pcfg tbl (chunk,cat) =
 
 -------------------------------------------------------------
 
+-- helper function that finds the maximum Double in a list of (Double,Cat)
+-- tuples and returns the full tuple
+--maxOverTuple :: [(a,b)] -> (a,b)
+--maxOverTuple l = case l of
+--    [] -> (0, undefined )
+--    (l:ls) -> if fst l > fst (maxOverTuple ls) then l else maxOverTuple ls
+
+
 -- A name for the specific Map type that we will use to represent 
 -- a table of inside probabilities.
 type ViterbiTable = (Map.Map ([String],Cat) Double, Map.Map ([String],Cat) (Cat,Cat,Int))
@@ -155,7 +163,22 @@ buildTableViterbi pcfg sent =
     Util.updateForAll (fillCellViterbi pcfg) (Map.empty, Map.empty) (cellsToFill pcfg sent)
 
 fillCellViterbi :: ProbCFG -> ViterbiTable -> ([String],Cat) -> ViterbiTable
-fillCellViterbi = undefined
+fillCellViterbi pcfg (tblProbs,tblPointers) (chunk,cat) = 
+    case chunk of
+    [] -> undefined
+    [w] ->
+        let result = endProb pcfg cat w in
+        if result > 0 then
+            (Map.insert (chunk,cat) result tblProbs, tblPointers)
+        else
+            (tblProbs, tblPointers)
+    w ->
+        let viterbiProb = \ys -> \cat -> Map.findWithDefault 0 (ys,cat) tblProbs in
+        let (bestProb, bestCat) = Util.maxOver (\c1 -> fst (Util.maxOver (\c2 -> fst (Util.maxOver (\i -> trProb pcfg cat (c1,c2) * viterbiProb (take i w) c1 * viterbiProb (drop i w) c2) [1..(length w-1)])) (rightDaughterCats pcfg cat))) (leftDaughterCats pcfg cat) in
+        if bestProb > 0 then
+            (Map.insert (chunk,cat) bestProb tblProbs, Map.insert (chunk,cat) (bestCat,bestCat,fromIntegral 0) tblPointers)
+        else
+            (tblProbs, tblPointers)
 
 -------------------------------------------------------------
 
