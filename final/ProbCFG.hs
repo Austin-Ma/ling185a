@@ -72,7 +72,7 @@ rightDaughterCats (starting,ending,transitions,cats) cat =
 
 naiveInside :: ProbCFG -> [String] -> Cat -> Double
 naiveInside pcfg [] cat = undefined
-naiveInside pcfg [w] cat = trace ("w,cat: " ++ show (w,cat)) $ endProb pcfg cat w
+naiveInside pcfg [w] cat = endProb pcfg cat w
 naiveInside pcfg w cat =
     --trace ("w,cat: " ++ show (w,cat)) $
     Util.sumOver (\c1 -> Util.sumOver (\c2 -> Util.sumOver (\i -> trProb pcfg cat (c1,c2) * naiveInside pcfg (take i w) c1 * naiveInside pcfg (drop i w) c2) [1..(length w-1)]) (rightDaughterCats pcfg cat)) (leftDaughterCats pcfg cat)
