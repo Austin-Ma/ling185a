@@ -4,8 +4,6 @@ import qualified Util
 import qualified Data.Map as Map
 import qualified Data.List as List
 
-import Debug.Trace
-
 data Cat = S | NP | VP | N | D | V | PP | P | Adv deriving (Eq,Show,Ord)
 
 data StrucDesc = Leaf Cat String | Binary Cat StrucDesc StrucDesc
@@ -76,7 +74,7 @@ naiveInside :: ProbCFG -> [String] -> Cat -> Double
 naiveInside pcfg [] cat = undefined
 naiveInside pcfg [w] cat = trace ("w,cat: " ++ show (w,cat)) $ endProb pcfg cat w
 naiveInside pcfg w cat =
-    trace ("w,cat: " ++ show (w,cat)) $
+    --trace ("w,cat: " ++ show (w,cat)) $
     Util.sumOver (\c1 -> Util.sumOver (\c2 -> Util.sumOver (\i -> trProb pcfg cat (c1,c2) * naiveInside pcfg (take i w) c1 * naiveInside pcfg (drop i w) c2) [1..(length w-1)]) (rightDaughterCats pcfg cat)) (leftDaughterCats pcfg cat)
 
 allTriples :: [a] -> [b] -> [c] -> [(a,b,c)]
@@ -138,6 +136,7 @@ fillCellInside pcfg tbl (chunk,cat) =
             tbl
     w ->
         let insideProb = \ys -> \cat -> Map.findWithDefault 0 (ys,cat) tbl in
+        -- TODO: redo with all triples, see if triples length check necessary (verterbi input)
         let result = Util.sumOver (\c1 -> Util.sumOver (\c2 -> Util.sumOver (\i -> trProb pcfg cat (c1,c2) * insideProb (take i w) c1 * insideProb (drop i w) c2) [1..(length w-1)]) (rightDaughterCats pcfg cat)) (leftDaughterCats pcfg cat) in
         if result > 0 then
             Map.insert (chunk,cat) result tbl
@@ -145,14 +144,6 @@ fillCellInside pcfg tbl (chunk,cat) =
             tbl
 
 -------------------------------------------------------------
-
--- helper function that finds the maximum Double in a list of (Double,Cat)
--- tuples and returns the full tuple
---maxOverTuple :: [(a,b)] -> (a,b)
---maxOverTuple l = case l of
---    [] -> (0, undefined )
---    (l:ls) -> if fst l > fst (maxOverTuple ls) then l else maxOverTuple ls
-
 
 -- A name for the specific Map type that we will use to represent 
 -- a table of inside probabilities.
@@ -164,6 +155,7 @@ buildTableViterbi pcfg sent =
 
 fillCellViterbi :: ProbCFG -> ViterbiTable -> ([String],Cat) -> ViterbiTable
 fillCellViterbi pcfg (tblProbs,tblPointers) (chunk,cat) = 
+    --trace ("chunk,cat: " ++ show (chunk, cat)) $
     case chunk of
     [] -> undefined
     [w] ->
@@ -174,16 +166,33 @@ fillCellViterbi pcfg (tblProbs,tblPointers) (chunk,cat) =
             (tblProbs, tblPointers)
     w ->
         let viterbiProb = \ys -> \cat -> Map.findWithDefault 0 (ys,cat) tblProbs in
-        let (bestProb, bestCat) = Util.maxOver (\c1 -> fst (Util.maxOver (\c2 -> fst (Util.maxOver (\i -> trProb pcfg cat (c1,c2) * viterbiProb (take i w) c1 * viterbiProb (drop i w) c2) [1..(length w-1)])) (rightDaughterCats pcfg cat))) (leftDaughterCats pcfg cat) in
-        if bestProb > 0 then
-            (Map.insert (chunk,cat) bestProb tblProbs, Map.insert (chunk,cat) (bestCat,bestCat,fromIntegral 0) tblPointers)
+        let triples = allTriples (leftDaughterCats pcfg cat) (rightDaughterCats pcfg cat) [1..(length w-1)] in
+        if length triples > 0 then 
+            let (bestProb, (c1,c2,i)) = Util.maxOver (\(c1, c2, i) -> trProb pcfg cat (c1,c2) * viterbiProb (take i w) c1 * viterbiProb (drop i w) c2) triples in
+            if bestProb > 0 then
+                (Map.insert (chunk,cat) bestProb tblProbs, Map.insert (chunk,cat) (c1,c2,i) tblPointers)
+            else
+                (tblProbs, tblPointers)
         else
             (tblProbs, tblPointers)
 
 -------------------------------------------------------------
 
+-- returns all possible (left,right) partitions of a list
+partitions :: [a] -> [([a], [a])]
+partitions [] = []
+partitions l = 
+    map (\i -> (take i l, drop i l)) [1..(length l - 1)]
+
 -- Construct the best tree whose root is the given category and whose leaves 
 -- produce the given word-sequence, based on a provided table of viterbi backpointers.
 extractTree :: ([String],Cat) -> ViterbiTable -> StrucDesc
-extractTree = undefined
-
+extractTree (ws,cat) (tblProbs,tblPointers) = 
+    --trace ("ws,cat: " ++ show (ws, cat)) $
+    case ws of
+    [] -> undefined
+    [w] -> Leaf cat w
+    ws ->
+        let (lcat,rcat,p) = Map.findWithDefault undefined (ws,cat) tblPointers in
+        let (p,(lstr,rstr)) = Util.maxOver (\(l,r) -> Map.findWithDefault 0 (l,lcat) tblProbs * Map.findWithDefault 0 (r,rcat) tblProbs) (partitions ws) in
+        Binary cat (extractTree (lstr,lcat) (tblProbs,tblPointers)) (extractTree (rstr,rcat) (tblProbs,tblPointers))
